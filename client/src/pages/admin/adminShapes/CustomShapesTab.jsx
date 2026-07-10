@@ -130,6 +130,7 @@ function CustomShapesUserList({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [confirmDeleteAssignedId, setConfirmDeleteAssignedId] = useState(null);
+  const [cloningShapeId, setCloningShapeId] = useState(null);
   const [confirmDeleteCustomId, setConfirmDeleteCustomId] = useState(null);
   const [notice, setNotice] = useState("");
 
@@ -156,15 +157,37 @@ function CustomShapesUserList({
     setLoading(true);
     setError("");
     Promise.all([
-      api(`/shapes/assigned?userEmail=${encodeURIComponent(selectedUser.email)}`),
+      api(`/shapes/visible-to-user?userEmail=${encodeURIComponent(selectedUser.email)}`),
       api(`/custom-shapes/for-user?userEmail=${encodeURIComponent(selectedUser.email)}`),
     ])
-      .then(([assigned, custom]) => {
-        setAssignedShapes(assigned || []);
+      .then(([visible, custom]) => {
+        setAssignedShapes(visible || []);
         setCustomItems(custom || []);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+  }
+
+  async function cloneShared(shape) {
+    setError("");
+    setNotice("");
+    setCloningShapeId(shape.id);
+    try {
+      await api("/custom-shapes/clone-from-global", {
+        method: "POST",
+        body: {
+          shape_id: shape.id,
+          user_email: selectedUser.email,
+          user_name: selectedUser.name || "",
+        },
+      });
+      setNotice(`"${shape.shape_name}" cloned for ${selectedUser.name}. The clone replaces the library version for this user.`);
+      loadData();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCloningShapeId(null);
+    }
   }
 
   async function confirmDeleteAssigned(shapeId) {
@@ -248,41 +271,64 @@ function CustomShapesUserList({
 
           {assignedShapes.length > 0 && (
             <>
-              <h4>General shapes visible only to {selectedUser.name}</h4>
-              {assignedShapes.map((shape) => (
-                <div className="card" key={shape.id} style={{ marginBottom: "1rem" }}>
-                  <div className="grid-3" style={{ gridTemplateColumns: "1fr 1.4fr 1.4fr 0.6fr" }}>
-                    <ShapeImage fileId={shape.image_file_id} alt={shape.shape_name} />
-                    <div>
-                      <h3 style={{ margin: "0 0 0.5rem" }}>{shape.shape_name || "Untitled Shape"}</h3>
-                      <p><strong>Type:</strong> General Shape (assigned)</p>
-                      <p><strong>Category:</strong> {getCategoryLabel(shape.category)}</p>
-                      <p><strong>Status:</strong> {shape.is_active !== false ? "Active" : "Inactive"}</p>
-                    </div>
-                    <div>
-                      <strong>Formulas</strong>
-                      <FormulasList outputs={shape.outputs} />
-                    </div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                      <button className="btn btn-secondary" onClick={() => onEditGeneralShape(shape.id)}>
-                        Edit
-                      </button>
-                      {confirmDeleteAssignedId === shape.id ? (
-                        <button className="btn btn-danger" onClick={() => confirmDeleteAssigned(shape.id)}>
-                          Confirm Delete
-                        </button>
-                      ) : (
-                        <button
-                          className="btn btn-secondary"
-                          onClick={() => setConfirmDeleteAssignedId(shape.id)}
-                        >
-                          Delete
-                        </button>
-                      )}
+              <h4>Library shapes visible to {selectedUser.name}</h4>
+              {assignedShapes.map((shape) => {
+                const assignedToUser = !!shape.user_email;
+                return (
+                  <div className="card" key={shape.id} style={{ marginBottom: "1rem" }}>
+                    <div className="grid-3" style={{ gridTemplateColumns: "1fr 1.4fr 1.4fr 0.6fr" }}>
+                      <ShapeImage fileId={shape.image_file_id} alt={shape.shape_name} />
+                      <div>
+                        <h3 style={{ margin: "0 0 0.5rem" }}>{shape.shape_name || "Untitled Shape"}</h3>
+                        <p>
+                          <strong>Visibility:</strong>{" "}
+                          {assignedToUser ? (
+                            <span className="badge badge-warning">Only {selectedUser.name}</span>
+                          ) : (
+                            <span className="badge badge-neutral">All users</span>
+                          )}
+                        </p>
+                        <p><strong>Category:</strong> {getCategoryLabel(shape.category)}</p>
+                        <p><strong>Status:</strong> {shape.is_active !== false ? "Active" : "Inactive"}</p>
+                      </div>
+                      <div>
+                        <strong>Formulas</strong>
+                        <FormulasList outputs={shape.outputs} />
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                        {assignedToUser ? (
+                          <>
+                            <button className="btn btn-secondary" onClick={() => onEditGeneralShape(shape.id)}>
+                              Edit
+                            </button>
+                            {confirmDeleteAssignedId === shape.id ? (
+                              <button className="btn btn-danger" onClick={() => confirmDeleteAssigned(shape.id)}>
+                                Confirm Delete
+                              </button>
+                            ) : (
+                              <button
+                                className="btn btn-secondary"
+                                onClick={() => setConfirmDeleteAssignedId(shape.id)}
+                              >
+                                Delete
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          <button
+                            className="btn btn-secondary"
+                            disabled={cloningShapeId === shape.id}
+                            onClick={() => cloneShared(shape)}
+                            title="Copy this shape to this user only, then edit it freely"
+                          >
+                            {cloningShapeId === shape.id ? "Cloning..." : "Clone to customize"}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </>
           )}
 

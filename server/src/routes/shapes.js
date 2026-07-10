@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import { shapeLibraryCollection, toObjectId } from "../db/index.js";
+import { shapeLibraryCollection, customShapeLibraryCollection, toObjectId } from "../db/index.js";
 import { requireRole } from "../middleware/auth.js";
 import { saveUploadedImageToMongodb } from "../services/imageService.js";
 import {
@@ -70,6 +70,36 @@ router.get("/assigned", requireRole("admin"), async (req, res) => {
     .toArray();
 
   res.json(shapes.map(toJson));
+});
+
+// GET /api/shapes/visible-to-user?userEmail=X (admin) — every library shape this user
+// sees in their projects: unassigned globals + globals assigned to them, minus ones
+// replaced by an active clone. Mirrors shapeResolver visibility, user-scoped.
+router.get("/visible-to-user", requireRole("admin"), async (req, res) => {
+  const { userEmail } = req.query;
+  if (!userEmail) return res.status(400).json({ error: "userEmail query parameter is required." });
+
+  const clones = await customShapeLibraryCollection
+    .find(
+      { user_email: userEmail, type: "custom_shape", is_active: true, cloned_from: { $ne: null } },
+      { projection: { cloned_from: 1 } }
+    )
+    .toArray();
+  const clonedIds = new Set(clones.map((c) => c.cloned_from));
+
+  const shapes = await shapeLibraryCollection
+    .find({
+      is_active: true,
+      $or: [
+        { user_email: { $in: [null, ""] } },
+        { user_email: { $exists: false } },
+        { user_email: userEmail },
+      ],
+    })
+    .sort({ shape_name: 1 })
+    .toArray();
+
+  res.json(shapes.filter((s) => !clonedIds.has(String(s._id))).map(toJson));
 });
 
 // GET /api/shapes/available-for-project?projectId=X&category=beam
