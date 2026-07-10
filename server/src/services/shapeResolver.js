@@ -44,6 +44,21 @@ export async function getAvailableShapesForProject(projectId, category = "beam")
   const availableShapes = [];
   const ownerEmail = await getProjectOwnerEmail(projectId);
 
+  const customShapes = await customShapeLibraryCollection
+    .find({
+      ...customShapeScopeFilter(projectId, ownerEmail),
+      type: "custom_shape",
+      category,
+      is_active: true,
+    })
+    .sort({ shape_name: 1 })
+    .toArray();
+
+  // A user-scoped clone replaces its global original for this user's projects.
+  const clonedGlobalIds = new Set(
+    customShapes.map((shape) => shape.cloned_from).filter(Boolean)
+  );
+
   const globalShapes = await shapeLibraryCollection
     .find({ category, is_active: true, ...globalShapeVisibilityFilter(ownerEmail) })
     .sort({ shape_name: 1 })
@@ -51,6 +66,7 @@ export async function getAvailableShapesForProject(projectId, category = "beam")
 
   for (const shape of globalShapes) {
     const shapeId = String(shape._id);
+    if (clonedGlobalIds.has(shapeId)) continue;
 
     const overrideExists = await customShapeLibraryCollection.findOne({
       project_id: projectId,
@@ -70,16 +86,6 @@ export async function getAvailableShapesForProject(projectId, category = "beam")
       shape_source: "global",
     });
   }
-
-  const customShapes = await customShapeLibraryCollection
-    .find({
-      ...customShapeScopeFilter(projectId, ownerEmail),
-      type: "custom_shape",
-      category,
-      is_active: true,
-    })
-    .sort({ shape_name: 1 })
-    .toArray();
 
   for (const shape of customShapes) {
     const customShapeId = String(shape._id);
