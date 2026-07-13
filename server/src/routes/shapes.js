@@ -90,6 +90,7 @@ router.get("/visible-to-user", requireRole("admin"), async (req, res) => {
   const shapes = await shapeLibraryCollection
     .find({
       is_active: true,
+      hidden_for_users: { $ne: userEmail },
       $or: [
         { user_email: { $in: [null, ""] } },
         { user_email: { $exists: false } },

@@ -488,6 +488,12 @@ router.post("/clone-from-global", requireRole("admin"), async (req, res) => {
     updated_at: now,
   };
 
+  // Re-cloning restores a shape previously hidden for this user by a clone deletion.
+  await shapeLibraryCollection.updateOne(
+    { _id: oid },
+    { $pull: { hidden_for_users: userEmail } }
+  );
+
   const result = await customShapeLibraryCollection.insertOne(customShape);
   res.status(201).json(toJson(await enrichCustomItem({ _id: result.insertedId, ...customShape })));
 });
@@ -663,10 +669,26 @@ router.post("/:id/reactivate", requireRole("admin"), async (req, res) => {
   res.json(toJson(await enrichCustomItem(await customShapeLibraryCollection.findOne({ _id: oid }))));
 });
 
-// DELETE /api/custom-shapes/:id (admin) — hard delete
+// DELETE /api/custom-shapes/:id (admin) — hard delete. Deleting a user's clone also
+// hides the global original for that user (hidden_for_users tombstone), otherwise the
+// original reappears in their list and looks like the delete failed. Re-cloning via
+// Import from Shape Library un-hides it.
 router.delete("/:id", requireRole("admin"), async (req, res) => {
   const oid = toObjectId(req.params.id);
   if (!oid) return res.status(404).json({ error: "Custom shape item not found." });
+
+  const item = await customShapeLibraryCollection.findOne({ _id: oid });
+  if (!item) return res.status(404).json({ error: "Custom shape item not found." });
+
+  if (item.cloned_from && item.user_email) {
+    const originalOid = toObjectId(item.cloned_from);
+    if (originalOid) {
+      await shapeLibraryCollection.updateOne(
+        { _id: originalOid },
+        { $addToSet: { hidden_for_users: item.user_email } }
+      );
+    }
+  }
 
   const result = await customShapeLibraryCollection.deleteOne({ _id: oid });
   if (result.deletedCount === 0) return res.status(404).json({ error: "Custom shape item not found." });

@@ -19,9 +19,11 @@ function customShapeScopeFilter(projectId, ownerEmail) {
   return { $or: scopes };
 }
 
-/** Global shapes with no assigned user are visible to everyone; assigned shapes only to that user. */
+/** Global shapes with no assigned user are visible to everyone; assigned shapes only to that user.
+ * Shapes hidden for the user (clone deleted) are excluded. */
 function globalShapeVisibilityFilter(ownerEmail) {
   return {
+    ...(ownerEmail ? { hidden_for_users: { $ne: ownerEmail } } : {}),
     $or: [
       { user_email: { $in: [null, ""] } },
       { user_email: { $exists: false } },
