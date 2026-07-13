@@ -221,7 +221,6 @@ function AddGeneralShapeForm({ category, onCancel, onSaved }) {
   const categoryLabel = getCategoryLabel(category);
   const [shapeName, setShapeName] = useState("");
   const [visibleToUser, setVisibleToUser] = useState(null);
-  const [description, setDescription] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [outputs, setOutputs] = useState(outputsOrDefault([]));
   const [users, setUsers] = useState([]);
@@ -251,7 +250,6 @@ function AddGeneralShapeForm({ category, onCancel, onSaved }) {
     const formData = new FormData();
     formData.append("shape_name", name);
     formData.append("category", category);
-    formData.append("description", description.trim());
     if (visibleToUser) {
       formData.append("user_email", visibleToUser.email);
       formData.append("user_name", visibleToUser.name || "");
@@ -288,15 +286,6 @@ function AddGeneralShapeForm({ category, onCancel, onSaved }) {
       </div>
 
       <VisibilitySelect users={users} value={visibleToUser?.email} onChange={setVisibleToUser} />
-
-      <div className="form-row">
-        <label>Description</label>
-        <textarea
-          placeholder="Short description of this shape"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-      </div>
 
       <div className="form-row">
         <label>Shape Image</label>

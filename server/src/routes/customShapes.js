@@ -498,6 +498,77 @@ router.post("/clone-from-global", requireRole("admin"), async (req, res) => {
   res.status(201).json(toJson(await enrichCustomItem({ _id: result.insertedId, ...customShape })));
 });
 
+// POST /api/custom-shapes/clone-from-custom (admin) — clone another user's custom
+// shape into a custom shape for the target user. Carries cloned_from through so a
+// clone-of-a-clone still replaces the global original for the new user.
+router.post("/clone-from-custom", requireRole("admin"), async (req, res) => {
+  const { custom_shape_id: customShapeId, user_email: userEmail, user_name: userName } = req.body;
+
+  if (!customShapeId || !userEmail) {
+    return res.status(400).json({ error: "custom_shape_id and user_email are required." });
+  }
+
+  const oid = toObjectId(customShapeId);
+  if (!oid) return res.status(404).json({ error: "Custom shape not found." });
+
+  const source = await customShapeLibraryCollection.findOne({ _id: oid, type: "custom_shape" });
+  if (!source) return res.status(404).json({ error: "Custom shape not found." });
+
+  if (source.user_email === userEmail) {
+    return res.status(409).json({ error: "This custom shape already belongs to this user." });
+  }
+
+  const duplicate = await customShapeLibraryCollection.findOne({
+    user_email: userEmail,
+    type: "custom_shape",
+    cloned_from_custom: String(source._id),
+  });
+  if (duplicate) {
+    return res.status(409).json({ error: "This shape is already cloned for this user." });
+  }
+
+  const now = new Date();
+  const customShape = {
+    user_email: userEmail,
+    user_name: userName || null,
+    project_id: null,
+    project_name: null,
+    type: "custom_shape",
+    category: source.category || "beam",
+    shape_name: source.shape_name,
+    description: source.description || "",
+    image_path: source.image_path ?? null,
+    image_file_id: source.image_file_id ?? null,
+    image_filename: source.image_filename ?? null,
+    image_mime_type: source.image_mime_type ?? null,
+    image_storage: source.image_storage ?? null,
+    outputs: structuredClone(source.outputs || []),
+    cloned_from: source.cloned_from ?? null,
+    cloned_from_custom: String(source._id),
+    cloned_from_name: source.shape_name,
+    is_active: true,
+    created_by: req.user.email,
+    updated_by: req.user.email,
+    ai_request_id: null,
+    created_at: now,
+    updated_at: now,
+  };
+
+  // Re-cloning restores a global shape previously hidden for this user by a clone deletion.
+  if (customShape.cloned_from) {
+    const originalOid = toObjectId(customShape.cloned_from);
+    if (originalOid) {
+      await shapeLibraryCollection.updateOne(
+        { _id: originalOid },
+        { $pull: { hidden_for_users: userEmail } }
+      );
+    }
+  }
+
+  const result = await customShapeLibraryCollection.insertOne(customShape);
+  res.status(201).json(toJson(await enrichCustomItem({ _id: result.insertedId, ...customShape })));
+});
+
 // PATCH /api/custom-shapes/:id/formula-override (admin) — update_custom_formula_override
 router.patch("/:id/formula-override", requireRole("admin"), async (req, res) => {
   const oid = toObjectId(req.params.id);

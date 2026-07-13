@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { api } from "../../../api/client.js";
-import { EditGeneralShapeForm } from "./GeneralShapesTab.jsx";
 import {
   GENERAL_SHAPE_CATEGORIES,
   getCategoryLabel,
@@ -15,21 +14,20 @@ import {
 } from "./shared.jsx";
 
 /**
- * Custom Shapes & Formulas tab. Mode state machine: list | add | view | edit | edit_general,
+ * Custom Shapes & Formulas tab. Mode state machine: list | add | view | edit,
  * mirroring st.session_state.admin_custom_shape_mode from ui/admin_shapes.py.
  */
 export default function CustomShapesTab() {
   const [mode, setMode] = useState("list");
   const [selectedUser, setSelectedUser] = useState(null); // { email, name } chosen in list dropdown
   const [targetUser, setTargetUser] = useState(null); // user the Add form applies to
+  const [category, setCategory] = useState("beam");
   const [selectedCustomItemId, setSelectedCustomItemId] = useState(null);
-  const [selectedGeneralShapeId, setSelectedGeneralShapeId] = useState(null);
   const [listRefreshKey, setListRefreshKey] = useState(0);
 
   function backToList() {
     setMode("list");
     setSelectedCustomItemId(null);
-    setSelectedGeneralShapeId(null);
     setListRefreshKey((k) => k + 1);
   }
 
@@ -37,6 +35,7 @@ export default function CustomShapesTab() {
     return (
       <ImportFromLibrary
         targetUser={targetUser}
+        category={category}
         onCancel={() => setMode("list")}
         onDone={backToList}
       />
@@ -47,6 +46,7 @@ export default function CustomShapesTab() {
     return (
       <AddUserCustomShapeForm
         targetUser={targetUser}
+        category={category}
         onCancel={() => setMode("list")}
         onSaved={backToList}
       />
@@ -73,21 +73,13 @@ export default function CustomShapesTab() {
     );
   }
 
-  if (mode === "edit_general") {
-    return (
-      <EditGeneralShapeForm
-        shapeId={selectedGeneralShapeId}
-        onCancel={backToList}
-        onSaved={backToList}
-      />
-    );
-  }
-
   return (
     <CustomShapesUserList
       key={listRefreshKey}
       selectedUser={selectedUser}
       setSelectedUser={setSelectedUser}
+      category={category}
+      setCategory={setCategory}
       onAdd={(user) => {
         setTargetUser(user);
         setSelectedCustomItemId(null);
@@ -106,10 +98,6 @@ export default function CustomShapesTab() {
         setSelectedCustomItemId(id);
         setMode("edit");
       }}
-      onEditGeneralShape={(id) => {
-        setSelectedGeneralShapeId(id);
-        setMode("edit_general");
-      }}
     />
   );
 }
@@ -117,20 +105,18 @@ export default function CustomShapesTab() {
 function CustomShapesUserList({
   selectedUser,
   setSelectedUser,
+  category,
+  setCategory,
   onAdd,
   onImport,
   onViewCustomItem,
   onEditCustomItem,
-  onEditGeneralShape,
 }) {
   const [users, setUsers] = useState([]);
   const [usersLoading, setUsersLoading] = useState(true);
-  const [assignedShapes, setAssignedShapes] = useState([]);
   const [customItems, setCustomItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [confirmDeleteAssignedId, setConfirmDeleteAssignedId] = useState(null);
-  const [cloningShapeId, setCloningShapeId] = useState(null);
   const [confirmDeleteCustomId, setConfirmDeleteCustomId] = useState(null);
   const [notice, setNotice] = useState("");
 
@@ -156,49 +142,10 @@ function CustomShapesUserList({
   function loadData() {
     setLoading(true);
     setError("");
-    Promise.all([
-      api(`/shapes/visible-to-user?userEmail=${encodeURIComponent(selectedUser.email)}`),
-      api(`/custom-shapes/for-user?userEmail=${encodeURIComponent(selectedUser.email)}`),
-    ])
-      .then(([visible, custom]) => {
-        setAssignedShapes(visible || []);
-        setCustomItems(custom || []);
-      })
+    api(`/custom-shapes/for-user?userEmail=${encodeURIComponent(selectedUser.email)}`)
+      .then((custom) => setCustomItems(custom || []))
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }
-
-  async function cloneShared(shape) {
-    setError("");
-    setNotice("");
-    setCloningShapeId(shape.id);
-    try {
-      await api("/custom-shapes/clone-from-global", {
-        method: "POST",
-        body: {
-          shape_id: shape.id,
-          user_email: selectedUser.email,
-          user_name: selectedUser.name || "",
-        },
-      });
-      setNotice(`"${shape.shape_name}" cloned for ${selectedUser.name}. The clone replaces the library version for this user.`);
-      loadData();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setCloningShapeId(null);
-    }
-  }
-
-  async function confirmDeleteAssigned(shapeId) {
-    try {
-      await api(`/shapes/${shapeId}`, { method: "DELETE" });
-      setConfirmDeleteAssignedId(null);
-      setNotice("Shape deleted.");
-      loadData();
-    } catch (err) {
-      setError(err.message);
-    }
   }
 
   async function confirmDeleteCustom(customItemId) {
@@ -217,6 +164,8 @@ function CustomShapesUserList({
   if (users.length === 0) {
     return <div className="error-banner">No users found. Create a user first.</div>;
   }
+
+  const categoryItems = customItems.filter((item) => (item.category || "beam") === category);
 
   return (
     <div>
@@ -237,13 +186,27 @@ function CustomShapesUserList({
         </select>
       </div>
 
+      <div style={{ display: "flex", gap: "0.5rem", margin: "0.75rem 0" }}>
+        {GENERAL_SHAPE_CATEGORIES.map((c) => (
+          <button
+            key={c.key}
+            className={category === c.key ? "btn btn-primary" : "btn btn-secondary"}
+            onClick={() => setCategory(c.key)}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+
       <hr />
 
       {selectedUser && (
         <>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
-              <h3 style={{ margin: 0 }}>Custom Shapes of {selectedUser.name}</h3>
+              <h3 style={{ margin: 0 }}>
+                Custom {getCategoryLabel(category)} Shapes of {selectedUser.name}
+              </h3>
               <p style={{ color: "var(--muted)", margin: "0.25rem 0" }}>
                 Changes here apply only to this user.
               </p>
@@ -262,80 +225,17 @@ function CustomShapesUserList({
           {notice && <div className="success-banner">{notice}</div>}
           {loading && <p>Loading...</p>}
 
-          {!loading && assignedShapes.length === 0 && customItems.length === 0 && (
+          {!loading && categoryItems.length === 0 && (
             <div className="info-banner">
-              No shapes for {selectedUser.name} yet. Use + Add Custom Shape, or assign a general
-              shape via Visible To in the General tab.
+              No custom {getCategoryLabel(category).toLowerCase()} shapes for {selectedUser.name} yet.
+              Use + Add Custom Shape, or Import from Shape Library.
             </div>
           )}
 
-          {assignedShapes.length > 0 && (
-            <>
-              <h4>Library shapes visible to {selectedUser.name}</h4>
-              {assignedShapes.map((shape) => {
-                const assignedToUser = !!shape.user_email;
-                return (
-                  <div className="card" key={shape.id} style={{ marginBottom: "1rem" }}>
-                    <div className="grid-3" style={{ gridTemplateColumns: "1fr 1.4fr 1.4fr 0.6fr" }}>
-                      <ShapeImage fileId={shape.image_file_id} alt={shape.shape_name} />
-                      <div>
-                        <h3 style={{ margin: "0 0 0.5rem" }}>{shape.shape_name || "Untitled Shape"}</h3>
-                        <p>
-                          <strong>Visibility:</strong>{" "}
-                          {assignedToUser ? (
-                            <span className="badge badge-warning">Only {selectedUser.name}</span>
-                          ) : (
-                            <span className="badge badge-neutral">All users</span>
-                          )}
-                        </p>
-                        <p><strong>Category:</strong> {getCategoryLabel(shape.category)}</p>
-                        <p><strong>Status:</strong> {shape.is_active !== false ? "Active" : "Inactive"}</p>
-                      </div>
-                      <div>
-                        <strong>Formulas</strong>
-                        <FormulasList outputs={shape.outputs} />
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                        {assignedToUser ? (
-                          <>
-                            <button className="btn btn-secondary" onClick={() => onEditGeneralShape(shape.id)}>
-                              Edit
-                            </button>
-                            {confirmDeleteAssignedId === shape.id ? (
-                              <button className="btn btn-danger" onClick={() => confirmDeleteAssigned(shape.id)}>
-                                Confirm Delete
-                              </button>
-                            ) : (
-                              <button
-                                className="btn btn-secondary"
-                                onClick={() => setConfirmDeleteAssignedId(shape.id)}
-                              >
-                                Delete
-                              </button>
-                            )}
-                          </>
-                        ) : (
-                          <button
-                            className="btn btn-secondary"
-                            disabled={cloningShapeId === shape.id}
-                            onClick={() => cloneShared(shape)}
-                            title="Copy this shape to this user only, then edit it freely"
-                          >
-                            {cloningShapeId === shape.id ? "Cloning..." : "Clone to customize"}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </>
-          )}
-
-          {customItems.length > 0 && (
+          {categoryItems.length > 0 && (
             <>
               <h4>Custom shapes & formulas of {selectedUser.name}</h4>
-              {customItems.map((item) => (
+              {categoryItems.map((item) => (
                 <div className="card" key={item.id} style={{ marginBottom: "1rem" }}>
                   <div className="grid-3" style={{ gridTemplateColumns: "0.8fr 1.4fr 1.4fr 0.6fr" }}>
                     <ShapeImage fileId={item.display_image_file_id} alt={item.display_shape_name} />
@@ -397,11 +297,15 @@ function CustomShapesUserList({
   );
 }
 
-/** Clone a global shape into a user-scoped custom shape. The clone replaces the
- * original in that user's shape dropdowns; admin can then edit its formulas freely. */
-function ImportFromLibrary({ targetUser, onCancel, onDone }) {
-  const [shapes, setShapes] = useState([]);
-  const [clonedIds, setClonedIds] = useState(new Set());
+/** Clone a shape into a user-scoped custom shape. Sources: common-pool library shapes,
+ * library shapes assigned to other users, and other users' custom shapes. A library
+ * clone replaces the original in that user's shape dropdowns. */
+function ImportFromLibrary({ targetUser, category, onCancel, onDone }) {
+  const [commonShapes, setCommonShapes] = useState([]);
+  const [otherAssignedShapes, setOtherAssignedShapes] = useState([]);
+  const [otherCustomShapes, setOtherCustomShapes] = useState([]);
+  const [clonedGlobalIds, setClonedGlobalIds] = useState(new Set());
+  const [clonedCustomIds, setClonedCustomIds] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -410,17 +314,29 @@ function ImportFromLibrary({ targetUser, onCancel, onDone }) {
   useEffect(() => {
     if (!targetUser?.email) return;
     Promise.all([
-      api("/shapes?statusFilter=Active"),
+      api(`/shapes?statusFilter=Active&category=${encodeURIComponent(category)}`),
+      api(`/custom-shapes?category=${encodeURIComponent(category)}&statusFilter=Active`),
       api(`/custom-shapes/for-user?userEmail=${encodeURIComponent(targetUser.email)}`),
     ])
-      .then(([allShapes, customItems]) => {
-        // Only common-pool shapes (not already user-assigned ones).
-        setShapes((allShapes || []).filter((s) => !s.user_email));
-        setClonedIds(new Set((customItems || []).map((c) => c.cloned_from).filter(Boolean)));
+      .then(([allShapes, allCustom, targetCustom]) => {
+        const shapes = allShapes || [];
+        setCommonShapes(shapes.filter((s) => !s.user_email));
+        setOtherAssignedShapes(
+          shapes.filter((s) => s.user_email && s.user_email !== targetUser.email)
+        );
+        setOtherCustomShapes(
+          (allCustom || []).filter(
+            (c) => c.type === "custom_shape" && c.user_email && c.user_email !== targetUser.email
+          )
+        );
+        setClonedGlobalIds(new Set((targetCustom || []).map((c) => c.cloned_from).filter(Boolean)));
+        setClonedCustomIds(
+          new Set((targetCustom || []).map((c) => c.cloned_from_custom).filter(Boolean))
+        );
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [targetUser?.email]);
+  }, [targetUser?.email, category]);
 
   if (!targetUser) {
     return (
@@ -431,21 +347,33 @@ function ImportFromLibrary({ targetUser, onCancel, onDone }) {
     );
   }
 
-  async function handleClone(shape) {
+  async function handleClone(shape, source) {
     setError("");
     setNotice("");
     setBusyId(shape.id);
     try {
-      await api("/custom-shapes/clone-from-global", {
-        method: "POST",
-        body: {
-          shape_id: shape.id,
-          user_email: targetUser.email,
-          user_name: targetUser.name || "",
-        },
-      });
-      setClonedIds((prev) => new Set([...prev, shape.id]));
-      setNotice(`"${shape.shape_name}" cloned for ${targetUser.name}. It now replaces the library version for this user.`);
+      if (source === "custom") {
+        await api("/custom-shapes/clone-from-custom", {
+          method: "POST",
+          body: {
+            custom_shape_id: shape.id,
+            user_email: targetUser.email,
+            user_name: targetUser.name || "",
+          },
+        });
+        setClonedCustomIds((prev) => new Set([...prev, shape.id]));
+      } else {
+        await api("/custom-shapes/clone-from-global", {
+          method: "POST",
+          body: {
+            shape_id: shape.id,
+            user_email: targetUser.email,
+            user_name: targetUser.name || "",
+          },
+        });
+        setClonedGlobalIds((prev) => new Set([...prev, shape.id]));
+      }
+      setNotice(`"${shape.shape_name}" cloned for ${targetUser.name}.`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -453,14 +381,58 @@ function ImportFromLibrary({ targetUser, onCancel, onDone }) {
     }
   }
 
+  function renderShapeCard(shape, source, alreadyCloned, ownerLine) {
+    return (
+      <div className="card" key={`${source}-${shape.id}`} style={{ marginBottom: "1rem" }}>
+        <div className="grid-3" style={{ gridTemplateColumns: "0.8fr 1.4fr 1.4fr 0.7fr" }}>
+          <ShapeImage
+            fileId={source === "custom" ? shape.display_image_file_id || shape.image_file_id : shape.image_file_id}
+            alt={shape.shape_name}
+          />
+          <div>
+            <h3 style={{ margin: "0 0 0.5rem" }}>{shape.shape_name || "Untitled Shape"}</h3>
+            <p><strong>Category:</strong> {getCategoryLabel(shape.category)}</p>
+            {ownerLine && <p><strong>Owner:</strong> {ownerLine}</p>}
+            {source === "custom" && (
+              <p style={{ color: "var(--muted)" }}>Shape ID: {shape.id}</p>
+            )}
+            {shape.description && <p>{shape.description}</p>}
+          </div>
+          <div>
+            <strong>Formulas</strong>
+            <FormulasList outputs={source === "custom" ? shape.display_outputs || shape.outputs : shape.outputs} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+            {alreadyCloned ? (
+              <span className="badge badge-success">Cloned</span>
+            ) : (
+              <button
+                className="btn btn-primary"
+                disabled={busyId === shape.id}
+                onClick={() => handleClone(shape, source)}
+              >
+                {busyId === shape.id ? "Cloning..." : "Clone for user"}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const nothingToImport =
+    commonShapes.length === 0 && otherAssignedShapes.length === 0 && otherCustomShapes.length === 0;
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <h3 style={{ margin: 0 }}>Import from Shape Library for {targetUser.name}</h3>
+          <h3 style={{ margin: 0 }}>
+            Import {getCategoryLabel(category)} Shapes for {targetUser.name}
+          </h3>
           <p style={{ color: "var(--muted)", margin: "0.25rem 0" }}>
-            Cloning copies the shape to this user only and hides the original library version
-            from them. Edit the clone's formulas afterwards without affecting other users.
+            Cloning copies the shape to this user only. Edit the clone's formulas afterwards
+            without affecting other users.
           </p>
         </div>
         <button className="btn btn-secondary" onClick={onDone}>
@@ -472,50 +444,54 @@ function ImportFromLibrary({ targetUser, onCancel, onDone }) {
       {notice && <div className="success-banner">{notice}</div>}
       {loading && <p>Loading...</p>}
 
-      {!loading && shapes.length === 0 && (
-        <div className="info-banner">No shapes in the common library.</div>
+      {!loading && nothingToImport && (
+        <div className="info-banner">
+          No {getCategoryLabel(category).toLowerCase()} shapes available to import.
+        </div>
       )}
 
-      {shapes.map((shape) => {
-        const alreadyCloned = clonedIds.has(shape.id);
-        return (
-          <div className="card" key={shape.id} style={{ marginBottom: "1rem" }}>
-            <div className="grid-3" style={{ gridTemplateColumns: "0.8fr 1.4fr 1.4fr 0.7fr" }}>
-              <ShapeImage fileId={shape.image_file_id} alt={shape.shape_name} />
-              <div>
-                <h3 style={{ margin: "0 0 0.5rem" }}>{shape.shape_name || "Untitled Shape"}</h3>
-                <p><strong>Category:</strong> {getCategoryLabel(shape.category)}</p>
-                {shape.description && <p>{shape.description}</p>}
-              </div>
-              <div>
-                <strong>Formulas</strong>
-                <FormulasList outputs={shape.outputs} />
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                {alreadyCloned ? (
-                  <span className="badge badge-success">Cloned</span>
-                ) : (
-                  <button
-                    className="btn btn-primary"
-                    disabled={busyId === shape.id}
-                    onClick={() => handleClone(shape)}
-                  >
-                    {busyId === shape.id ? "Cloning..." : "Clone for user"}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })}
+      {commonShapes.length > 0 && (
+        <>
+          <h4>Common shape library</h4>
+          {commonShapes.map((shape) =>
+            renderShapeCard(shape, "global", clonedGlobalIds.has(shape.id), null)
+          )}
+        </>
+      )}
+
+      {otherAssignedShapes.length > 0 && (
+        <>
+          <h4>Library shapes assigned to other users</h4>
+          {otherAssignedShapes.map((shape) =>
+            renderShapeCard(
+              shape,
+              "global",
+              clonedGlobalIds.has(shape.id),
+              `${shape.user_name || "Unknown"} (${shape.user_email})`
+            )
+          )}
+        </>
+      )}
+
+      {otherCustomShapes.length > 0 && (
+        <>
+          <h4>Custom shapes of other users</h4>
+          {otherCustomShapes.map((shape) =>
+            renderShapeCard(
+              shape,
+              "custom",
+              clonedCustomIds.has(shape.id),
+              `${shape.user_name || "Unknown"} (${shape.user_email})`
+            )
+          )}
+        </>
+      )}
     </div>
   );
 }
 
-function AddUserCustomShapeForm({ targetUser, onCancel, onSaved }) {
-  const [category, setCategory] = useState("beam");
+function AddUserCustomShapeForm({ targetUser, category, onCancel, onSaved }) {
   const [shapeName, setShapeName] = useState("");
-  const [description, setDescription] = useState("");
   const [imageFile, setImageFile] = useState(null);
   const [outputs, setOutputs] = useState(outputsOrDefault([]));
   const [error, setError] = useState("");
@@ -551,7 +527,6 @@ function AddUserCustomShapeForm({ targetUser, onCancel, onSaved }) {
     formData.append("user_name", targetUser.name || "");
     formData.append("category", category);
     formData.append("shape_name", name);
-    formData.append("description", description.trim());
     formData.append("outputs", buildOutputsField(cleaned));
     if (imageFile) formData.append("image", imageFile);
 
@@ -568,21 +543,12 @@ function AddUserCustomShapeForm({ targetUser, onCancel, onSaved }) {
 
   return (
     <div className="card">
-      <h3>Add Custom Shape for {targetUser.name}</h3>
-      <p style={{ color: "var(--muted)" }}>Custom Shapes & Formulas • Visible only to this user</p>
+      <h3>Add Custom {getCategoryLabel(category)} Shape for {targetUser.name}</h3>
+      <p style={{ color: "var(--muted)" }}>
+        Custom Shapes & Formulas • {getCategoryLabel(category)} • Visible only to this user
+      </p>
 
       {error && <div className="error-banner">{error}</div>}
-
-      <div className="form-row" style={{ maxWidth: 300 }}>
-        <label>Category</label>
-        <select value={category} onChange={(e) => setCategory(e.target.value)}>
-          {GENERAL_SHAPE_CATEGORIES.map((c) => (
-            <option key={c.key} value={c.key}>
-              {c.label}
-            </option>
-          ))}
-        </select>
-      </div>
 
       <div className="form-row">
         <label>Shape Name</label>
@@ -591,15 +557,6 @@ function AddUserCustomShapeForm({ targetUser, onCancel, onSaved }) {
           placeholder="Enter custom shape name"
           value={shapeName}
           onChange={(e) => setShapeName(e.target.value)}
-        />
-      </div>
-
-      <div className="form-row">
-        <label>Description</label>
-        <textarea
-          placeholder="Short description of this shape"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
         />
       </div>
 
