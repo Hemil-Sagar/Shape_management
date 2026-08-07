@@ -1,0 +1,23 @@
+{
+  "name": "neev-server",
+  "version": "1.0.0",
+  "description": "FeathersJS backend for BBSteel - Dashboard, Shape & Formula Management, User Management",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "@feathersjs/express": "^5.0.31",
+    "@feathersjs/feathers": "^5.0.31",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.8.0",
+    "multer": "^2.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}
