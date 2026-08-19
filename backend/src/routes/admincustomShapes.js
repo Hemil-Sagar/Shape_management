@@ -3,6 +3,8 @@ const { ObjectId } = require('mongodb')
 const { getDb } = require('../db')
 const { requireAuth, requireRole } = require('../middleware/auth')
 const { upload } = require('../utils/upload')
+const asyncHandler = require('../utils/asyncHandler')
+const { uploadImageBuffer } = require('../utils/gridfs')
 
 const router = express.Router()
 router.use(requireAuth, requireRole('admin'))
@@ -29,8 +31,8 @@ const toCustomItemResponse = (doc) => {
     cloned_from_name: doc.cloned_from_name || null,
     cloned_from_custom: doc.cloned_from_custom || null,
     is_active: doc.is_active !== false,
-    update_by: doc.update_by || null,
-    update_at: doc.update_at || null,
+    updated_by: doc.updated_by || null,
+    updated_at: doc.updated_at || null,
 
     display_shape_name: doc.shape_name || null,
     display_description: doc.description || "",
@@ -76,7 +78,7 @@ router.get('/', async (req, res) => {
   res.json(items.map(toCustomItemResponse))
 })
 
-router.post('/user', upload.single('image'), async (req, res) => {
+router.post('/user', upload.single('image'), asyncHandler(async (req, res) => {
   const { user_email, user_name, category, shape_name, outputs } = req.body
 
   if (!user_email) return res.status(400).json({ error: "user_email is required." })
@@ -93,6 +95,9 @@ router.post('/user', upload.single('image'), async (req, res) => {
   
     const db = getDb()
     const now = new Date()
+    const imageFileId = req.file
+      ? await uploadImageBuffer(db, req.file.buffer, req.file.originalname, req.file.mimetype)
+      : null
   
     const newItem = {
       type: "custom_shape",
@@ -102,7 +107,7 @@ router.post('/user', upload.single('image'), async (req, res) => {
       shape_name: shape_name.trim(),
       description: "",
       outputs: parsedOutputs,
-      image_file_id: req.file ? req.file.filename : null,
+      image_file_id: imageFileId,
       cloned_from: null,
       cloned_from_name: null,
       cloned_from_custom: null,
@@ -116,7 +121,7 @@ router.post('/user', upload.single('image'), async (req, res) => {
     newItem._id = result.insertedId
   
     res.status(201).json(toCustomItemResponse(newItem))
-  })
+  }))
   
   // POST /api/custom-shapes/clone-from-global  (json: shape_id, user_email, user_name)
   // Copies a general library shape into a new custom shape scoped to one user.
@@ -155,8 +160,6 @@ router.post('/user', upload.single('image'), async (req, res) => {
     res.status(201).json(toCustomItemResponse(clone))
   })
   
-  // POST /api/custom-shapes/clone-from-custom  (json: custom_shape_id, user_email, user_name)
-  // Copies another user's custom shape into a new one scoped to this user.
   router.post("/clone-from-custom", async (req, res) => {
     const { custom_shape_id, user_email, user_name } = req.body
     const db = getDb()
@@ -192,7 +195,6 @@ router.post('/user', upload.single('image'), async (req, res) => {
     res.status(201).json(toCustomItemResponse(clone))
   })
   
-  // GET /api/custom-shapes/:id
   router.get("/:id", async (req, res) => {
     const objectId = parseObjectId(res, req.params.id)
     if (!objectId) return
@@ -204,9 +206,7 @@ router.post('/user', upload.single('image'), async (req, res) => {
     res.json(toCustomItemResponse(item))
   })
   
-  // PATCH /api/custom-shapes/:id  (multipart/form-data: shape_name, description, outputs, is_active, image?)
-  // Only valid for type "custom_shape".
-  router.patch("/:id", upload.single("image"), async (req, res) => {
+  router.patch("/:id", upload.single("image"), asyncHandler(async (req, res) => {
     const objectId = parseObjectId(res, req.params.id)
     if (!objectId) return
   
@@ -219,6 +219,7 @@ router.post('/user', upload.single('image'), async (req, res) => {
       return res.status(400).json({ error: "Outputs must be valid JSON." })
     }
   
+    const db = getDb()
     const update = {
       shape_name: shape_name?.trim(),
       description: description || "",
@@ -227,20 +228,25 @@ router.post('/user', upload.single('image'), async (req, res) => {
       updated_by: req.user.email,
       updated_at: new Date(),
     }
-    if (req.file) update.image_file_id = req.file.filename
+
+    if (req.file) {
+      update.image_file_id = await uploadImageBuffer(
+        db,
+        req.file.buffer,
+        req.file.originalname,
+        req.file.mimetype
+      )
+    }
   
-    const db = getDb()
-    const result = await db
+    const updated = await db
       .collection("customShapes")
       .findOneAndUpdate({ _id: objectId }, { $set: update }, { returnDocument: "after" })
   
-    if (!result.value) return res.status(404).json({ error: "Custom shape not found." })
+    if (!updated) return res.status(404).json({ error: "Custom shape not found." })
   
-    res.json(toCustomItemResponse(result.value))
-  })
+    res.json(toCustomItemResponse(updated))
+  }))
   
-  // PATCH /api/custom-shapes/:id/formula-override  (json: override_outputs, is_active)
-  // Only valid for type "formula_override" - see the note at the top of this file.
   router.patch("/:id/formula-override", async (req, res) => {
     const objectId = parseObjectId(res, req.params.id)
     if (!objectId) return
@@ -248,7 +254,7 @@ router.post('/user', upload.single('image'), async (req, res) => {
     const { override_outputs, is_active } = req.body
   
     const db = getDb()
-    const result = await db.collection("customShapes").findOneAndUpdate(
+    const updated = await db.collection("customShapes").findOneAndUpdate(
       { _id: objectId, type: "formula_override" },
       {
         $set: {
@@ -262,17 +268,15 @@ router.post('/user', upload.single('image'), async (req, res) => {
       { returnDocument: "after" }
     )
   
-    if (!result.value) return res.status(404).json({ error: "Custom formula not found." })
+    if (!updated) return res.status(404).json({ error: "Custom formula not found." })
   
-    res.json(toCustomItemResponse(result.value))
+    res.json(toCustomItemResponse(updated))
   })
   
-  // POST /api/custom-shapes/:id/deactivate
   router.post("/:id/deactivate", async (req, res) => {
     await setActiveState(req, res, false)
   })
   
-  // POST /api/custom-shapes/:id/reactivate
   router.post("/:id/reactivate", async (req, res) => {
     await setActiveState(req, res, true)
   })
@@ -282,18 +286,17 @@ router.post('/user', upload.single('image'), async (req, res) => {
     if (!objectId) return
   
     const db = getDb()
-    const result = await db.collection("customShapes").findOneAndUpdate(
+    const updated = await db.collection("customShapes").findOneAndUpdate(
       { _id: objectId },
       { $set: { is_active: isActive, updated_by: req.user.email, updated_at: new Date() } },
       { returnDocument: "after" }
     )
   
-    if (!result.value) return res.status(404).json({ error: "Custom shape not found." })
+    if (!updated) return res.status(404).json({ error: "Custom shape not found." })
   
-    res.json(toCustomItemResponse(result.value))
+    res.json(toCustomItemResponse(updated))
   }
   
-  // DELETE /api/custom-shapes/:id
   router.delete("/:id", async (req, res) => {
     const objectId = parseObjectId(res, req.params.id)
     if (!objectId) return

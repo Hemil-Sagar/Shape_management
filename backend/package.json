@@ -10,6 +10,7 @@
   "dependencies": {
     "@feathersjs/express": "^5.0.31",
     "@feathersjs/feathers": "^5.0.31",
+    "@feathersjs/mongodb": "^5.0.49",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

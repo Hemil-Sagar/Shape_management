@@ -1,10 +1,19 @@
 const { MongoClient } = require("mongodb")
 const env = require('../config/env')
+let client = null
 let db = null
 
 async function connectDB() {
-  const client = await MongoClient.connect(env.mongoUri)
+  client = new MongoClient(env.mongoUri, {
+    serverSelectionTimeoutMS: 30000,
+    connectTimeoutMS: 30000,
+  })
+
+  await client.connect()
+
   db = client.db()
+  await db.command({ ping: 1 })
+
   console.log("Database connected")
 
   // user number
@@ -28,4 +37,5 @@ const getDb = () => {
   }
   return db
 }
+
 module.exports = {connectDB, getDb}

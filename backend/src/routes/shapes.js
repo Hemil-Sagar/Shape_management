@@ -4,6 +4,7 @@ const { getDb } = require('../db')
 const { requireAuth, requireRole } = require('../middleware/auth')
 const { upload } = require('../utils/upload')
 const asyncHandler = require('../utils/asyncHandler')
+const { uploadImageBuffer } = require('../utils/gridfs')
 
 const router = express.Router()
 
@@ -76,21 +77,33 @@ router.get('/:id', asyncHandler(async (req, res) => {
 }))
 
 router.post("/", upload.single("image"), asyncHandler(async (req, res) => {
-  const { shape_name, category, user_email, user_name, outputs } = req.body;
+  const { shape_name, category, user_email, user_name, outputs } = req.body
 
   if (!shape_name || !shape_name.trim()) {
-    return res.status(400).json({ error: "Shape name is required." });
+    return res.status(400).json({ error: "Shape name is required." })
   }
 
-  let parsedOutputs = [];
+  let parsedOutputs = []
+
   try {
-    parsedOutputs = outputs ? JSON.parse(outputs) : [];
+    parsedOutputs = outputs ? JSON.parse(outputs) : []
   } catch {
-    return res.status(400).json({ error: "Outputs must be valid JSON." });
+    return res.status(400).json({ error: "Outputs must be valid JSON." })
   }
 
   const db = getDb()
   const now = new Date()
+
+  let imageFileId = null
+
+  if (req.file) {
+    imageFileId = await uploadImageBuffer(
+      db,
+      req.file.buffer,
+      req.file.originalname,
+      req.file.mimetype
+    )
+  }
 
   const newShape = {
     shape_name: shape_name.trim(),
@@ -99,7 +112,7 @@ router.post("/", upload.single("image"), asyncHandler(async (req, res) => {
     user_name: user_name || null,
     description: "",
     outputs: parsedOutputs,
-    image_file_id: req.file ? req.file.filename : null,
+    image_file_id: imageFileId,
     is_active: true,
     created_by: req.user.email,
     updated_by: req.user.email,
@@ -108,7 +121,9 @@ router.post("/", upload.single("image"), asyncHandler(async (req, res) => {
   }
 
   const result = await db.collection("shapes").insertOne(newShape)
+
   newShape._id = result.insertedId
+
   res.status(201).json(toShapeResponse(newShape))
 }))
 
@@ -139,7 +154,12 @@ router.patch("/:id", upload.single("image"), asyncHandler(async (req, res) => {
   }
 
   if (req.file) {
-    update.image_file_id = req.file.filename
+    update.image_file_id = await uploadImageBuffer(
+      db,
+      req.file.buffer,
+      req.file.originalname,
+      req.file.mimetype
+    )
   }
 
   const updated = await db
