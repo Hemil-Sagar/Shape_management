@@ -4,14 +4,17 @@ const { requireAuth, requireRole } = require("../middleware/auth")
 const asyncHandler = require("../utils/asyncHandler")
 
 const router = express.Router()
+router.use((req, res, next)=> {
+  req.db = getDb()
+  next()  
+})
 
 router.get("/admin", requireAuth, requireRole("admin"), asyncHandler(async (req, res) => {
-  const db = getDb()
 
-  const totalUsers = await db.collection("users").countDocuments()
-  const totalProjects = await db.collection("projects").countDocuments()
+  const totalUsers = await req.db.collection("users").countDocuments()
+  const totalProjects = await req.db.collection("projects").countDocuments()
 
-  const recentProjectsDocs = await db
+  const recentProjectsDocs = await req.db
     .collection("projects")
     .find({})
     .sort({ created_at: -1 })
@@ -26,9 +29,9 @@ router.get("/admin", requireAuth, requireRole("admin"), asyncHandler(async (req,
     status: project.status,
   }))
 
-  const totalShapes = await db.collection("shapes").countDocuments()
+  const totalShapes = await req.db.collection("shapes").countDocuments()
 
-  const recentShapesDocs = await db
+  const recentShapesDocs = await req.db
     .collection("shapes")
     .find({})
     .sort({ createdAt: -1 })

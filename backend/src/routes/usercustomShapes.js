@@ -6,6 +6,10 @@ const asyncHandler = require('../utils/asyncHandler')
 
 const router = express.Router()
 router.use(requireAuth)
+router.use((req, res, next) => {
+  req.db = getDb()
+  next()  
+})
 
 const toCustomItemResponse = (doc) => {
   const isOverride = doc.type === "formula_override"
@@ -69,8 +73,6 @@ router.get(
       statusFilter,
     } = req.query
 
-    const db = getDb()
-
     const filter = {}
 
     if (category) {
@@ -89,7 +91,7 @@ router.get(
     
     filter.user_email = req.user.email;
 
-    const items = await db
+    const items = await req.db
       .collection("customShapes")
       .find(filter)
       .toArray()
@@ -110,9 +112,7 @@ router.get(
       return
     }
 
-    const db = getDb()
-
-    const item = await db
+    const item = await req.db
       .collection("customShapes")
       .findOne({
         _id: objectId,
@@ -132,6 +132,5 @@ router.get(
     res.json(toCustomItemResponse(item))
   })
 )
-
 
 module.exports = router

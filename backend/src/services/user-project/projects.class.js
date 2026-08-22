@@ -22,10 +22,10 @@ class ProjectsService {
   constructor(options = {}, app) {
     this.options = options
     this.app = app
+    this.db = getDb()
   }
 
   async find(params) {
-    const db = getDb()
     const { searchText } = params.query || {}
     const filter = {}
     if (params.user.role !== 'admin') {
@@ -34,7 +34,7 @@ class ProjectsService {
     if (searchText) {
       filter.project_name = new RegExp(searchText, 'i')
     }
-    const projects = await db
+    const projects = await this.db
       .collection('projects')
       .find(filter)
       .sort({ created_at: -1 })
@@ -43,14 +43,13 @@ class ProjectsService {
   }
 
   async get(id, params) {
-    const db = getDb()
     let objectId
     try {
       objectId = new ObjectId(id)
     } catch {
       throw new NotFound('Project not found')
     }
-    const project = await db.collection('projects').findOne({ _id: objectId })
+    const project = await this.db.collection('projects').findOne({ _id: objectId })
     if (!project) throw new NotFound('Project not found')
     if (params.user.role !== 'admin' && project.created_by !== params.user.email) {
       throw new Forbidden('You do not have permission to view this')
@@ -63,8 +62,7 @@ class ProjectsService {
     if (!project_name || !start_date || !end_date) {
       throw new BadRequest('project_name, start_date and end_date are required')
     }
-    const db = getDb()
-    const existingCount = await db.collection('projects').countDocuments()
+    const existingCount = await this.db.collection('projects').countDocuments()
     const project_code = 'PROJ' + String(existingCount + 1).padStart(4, '0')
     const now = new Date()
     const newProject = {
@@ -79,20 +77,20 @@ class ProjectsService {
       updated_at: now,
       status: 'Active',
     }
-    const result = await db.collection('projects').insertOne(newProject)
+    const result = await this.db.collection('projects').insertOne(newProject)
     newProject._id = result.insertedId
     return toProjectResponse(newProject)
   }
 
   async patch(id, data, params) {
-    const db = getDb()
+  
     let objectId
     try {
       objectId = new ObjectId(id)
     } catch {
       throw new NotFound('Project not found')
     }
-    const existing = await db.collection('projects').findOne({ _id: objectId })
+    const existing = await this.db.collection('projects').findOne({ _id: objectId })
     if (!existing) throw new NotFound('Project not found')
     if (params.user.role !== 'admin' && existing.created_by !== params.user.email) {
       throw new Forbidden('You do not have access to edit')
@@ -101,7 +99,7 @@ class ProjectsService {
     delete update.id
     delete update._id
 
-    const updated = await db
+    const updated = await this.db
       .collection('projects')
       .findOneAndUpdate({ _id: objectId }, { $set: update }, { returnDocument: 'after' })
 

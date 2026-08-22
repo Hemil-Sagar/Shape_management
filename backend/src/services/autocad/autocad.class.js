@@ -26,11 +26,11 @@ function toImportResponse(doc) {
 class AutocadImportsService {
   constructor(options = {}, app) {
     this.options = options 
-    this.app = app 
+    this.app = app
+    this.db = getDb()
   }
 
-  async find(params) {
-    const db = getDb() 
+  async find(params) { 
     const { projectId, searchText, statusFilter } = params.query || {} 
 
     const filter = {} 
@@ -50,7 +50,7 @@ class AutocadImportsService {
       filter.status = statusFilter 
     }
 
-    const imports = await db
+    const imports = await this.db
       .collection('autocad_imports')
       .find(filter)
       .sort({ created_at: -1 })
@@ -60,7 +60,6 @@ class AutocadImportsService {
   }
 
   async get(id, params) {
-    const db = getDb() 
 
     let objectId 
     try {
@@ -69,7 +68,7 @@ class AutocadImportsService {
       throw new NotFound('AutoCAD import not found') 
     }
 
-    const importItem = await db
+    const importItem = await this.db
       .collection('autocad_imports')
       .findOne({ _id: objectId }) 
 
@@ -109,7 +108,6 @@ class AutocadImportsService {
       throw new BadRequest('floor_id is required — please select a floor') 
     }
 
-    const db = getDb() 
     const now = new Date() 
 
     const newImport = {
@@ -130,14 +128,13 @@ class AutocadImportsService {
       updated_at: now,
     } 
 
-    const result = await db.collection('autocad_imports').insertOne(newImport) 
+    const result = await this.db.collection('autocad_imports').insertOne(newImport) 
 
     newImport._id = result.insertedId 
 
     return toImportResponse(newImport) 
   }
   async patch(id, data, params) {
-    const db = getDb() 
 
     let objectId 
     try {
@@ -146,7 +143,7 @@ class AutocadImportsService {
       throw new NotFound('AutoCAD import not found') 
     }
 
-    const existing = await db
+    const existing = await this.db
       .collection('autocad_imports')
       .findOne({ _id: objectId }) 
 
@@ -162,7 +159,7 @@ class AutocadImportsService {
     delete update.id
     delete update._id
 
-    const updated = await db
+    const updated = await this.db
       .collection('autocad_imports')
       .findOneAndUpdate(
         { _id: objectId },
@@ -174,7 +171,6 @@ class AutocadImportsService {
   }
 
   async remove(id, params) {
-    const db = getDb()
 
     let objectId
     try {
@@ -183,7 +179,7 @@ class AutocadImportsService {
       throw new NotFound('AutoCAD import not found')
     }
 
-    const existing = await db
+    const existing = await this.db
       .collection('autocad_imports')
       .findOne({ _id: objectId })
 
@@ -195,7 +191,7 @@ class AutocadImportsService {
       throw new Forbidden('You do not have permission to delete this import')
     }
 
-    await db.collection('autocad_imports').deleteOne({ _id: objectId })
+    await this.db.collection('autocad_imports').deleteOne({ _id: objectId })
 
     return toImportResponse(existing)
   }

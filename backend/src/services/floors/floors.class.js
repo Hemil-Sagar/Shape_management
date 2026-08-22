@@ -24,25 +24,25 @@ class FloorsService {
   constructor(options = {}, app) {
     this.options = options
     this.app = app
+    this.db = getDb()
   }
 
   // GET /api/floors?projectId=&blockId=&searchText=
   async find(params) {
-    const db = getDb()
     const { projectId, blockId, searchText } = params.query || {}
 
     if (!projectId || !blockId) {
       throw new BadRequest('projectId and blockId are required.')
     }
 
-    await assertProjectAccess(db, projectId, params.user)
+    await assertProjectAccess(this.db, projectId, params.user)
 
     const filter = { project_id: projectId, block_id: blockId }
     if (searchText) {
       filter.floor_name = new RegExp(searchText, 'i')
     }
 
-    const floors = await db
+    const floors = await this.db
       .collection('floors')
       .find(filter)
       .sort({ created_at: -1 })
@@ -53,7 +53,6 @@ class FloorsService {
 
   // GET /api/floors/:id
   async get(id, params) {
-    const db = getDb()
 
     let objectId
     try {
@@ -62,10 +61,10 @@ class FloorsService {
       throw new NotFound('Floor not found')
     }
 
-    const floor = await db.collection('floors').findOne({ _id: objectId })
+    const floor = await this.db.collection('floors').findOne({ _id: objectId })
     if (!floor) throw new NotFound('Floor not found')
 
-    await assertProjectAccess(db, floor.project_id, params.user)
+    await assertProjectAccess(this.db, floor.project_id, params.user)
 
     return toFloorResponse(floor)
   }
@@ -78,8 +77,7 @@ class FloorsService {
       throw new BadRequest('project_id, block_id, and floor_name are required.')
     }
 
-    const db = getDb()
-    await assertProjectAccess(db, project_id, params.user)
+    await assertProjectAccess(this.db, project_id, params.user)
 
     const now = new Date()
     const newFloor = {
@@ -96,7 +94,7 @@ class FloorsService {
       status: 'Active',
     }
 
-    const result = await db.collection('floors').insertOne(newFloor)
+    const result = await this.db.collection('floors').insertOne(newFloor)
     newFloor._id = result.insertedId
 
     return toFloorResponse(newFloor)

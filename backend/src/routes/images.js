@@ -3,10 +3,13 @@ const { getDb } = require('../db')
 const { openImageDownloadStream } = require('../utils/gridfs')
 const asyncHandler = require('../utils/asyncHandler')
 const router = express.Router()
+router.use((req, res, next) => {
+  req.db = getDb()
+  next()
+})
 
 router.get('/:fileId', asyncHandler(async (req, res) => {
-  const db = getDb()
-  const result = await openImageDownloadStream(db, req.params.fileId)
+  const result = await openImageDownloadStream(req.db, req.params.fileId)
 
   if (!result) {
     return res.status(404).json({ error: 'Image not found' })

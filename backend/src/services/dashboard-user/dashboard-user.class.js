@@ -3,11 +3,11 @@ class DashBoardUserService{
   constructor(options = {}, app) {
     this.options = options
     this.app = app
+    this.db = getDb()
   }
   async find(params) {
-    const db = getDb()
 
-    const totalProjects = await db
+    const totalProjects = await this.db
       .collection('projects')
       .countDocuments({created_by: params.user.email})
     

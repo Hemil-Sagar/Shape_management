@@ -14,6 +14,9 @@ const configureBlocksService = require('./services/blocks/blocks.service')
 const configureFloorsService = require('./services/floors/floors.service')
 const configureAutoCadService = require('./services/autocad/autocad.service')
 const confugureBeamsService = require('./services/beams/beams.service')
+const configureShapeAvailabilityService = require('./services/shape-availibility/shape-availability.service')
+const configureShapeResolveService = require('./services/shape-resolve/shape-resolve.service')
+const beamCalculateRoutes = require('./routes/beamCalculate')
 
 function createApp() {
   const app = express(feathers())
@@ -28,6 +31,8 @@ function createApp() {
   app.configure(configureFloorsService)
   app.configure(configureAutoCadService)
   app.configure(confugureBeamsService)
+  app.configure(configureShapeAvailabilityService)
+  app.configure(configureShapeResolveService)
   
   app.use('/api/images', imageRoutes)
   app.use("/api/auth", authRoutes)
@@ -35,6 +40,7 @@ function createApp() {
   app.use("/api/dashboard", dashboardRoutes)
   app.use('/api/shapes', shapeRoutes)
   app.use('/api/custom-shapes', admincustomShapesRoutes)
+  app.use('/api/beams', beamCalculateRoutes)
 
   app.use((err, req, res, next) => {
     console.error(err)

@@ -7,7 +7,10 @@ const asyncHandler = require('../utils/asyncHandler')
 const { uploadImageBuffer } = require('../utils/gridfs')
 
 const router = express.Router()
-
+router.use((req, res, next) => {
+  req.db = getDb()
+  next()
+})
 router.use(requireAuth, requireRole('admin'))
 
 const toShapeResponse = (doc) => {
@@ -38,7 +41,6 @@ const parseObjectId = (res, id) => {
 
 router.get("/", asyncHandler(async (req, res) => {
   const { category, searchText, statusFilter } = req.query
-  const db = getDb()
 
   const filter = {}
   if (category) {
@@ -54,7 +56,7 @@ router.get("/", asyncHandler(async (req, res) => {
     filter.is_active = false
   }
 
-  const shapes = await db
+  const shapes = await req.db
     .collection('shapes')
     .find(filter)
     .sort({ createdAt: -1 })
@@ -67,8 +69,7 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const objectId = parseObjectId(res, req.params.id)
   if (!objectId) return
 
-  const db = getDb()
-  const shape = await db.collection('shapes').findOne({ _id: objectId })
+  const shape = await req.db.collection('shapes').findOne({ _id: objectId })
 
   if (!shape) {
     return res.status(404).json({ error: 'Shape not found' })
@@ -91,14 +92,13 @@ router.post("/", upload.single("image"), asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Outputs must be valid JSON." })
   }
 
-  const db = getDb()
   const now = new Date()
 
   let imageFileId = null
 
   if (req.file) {
     imageFileId = await uploadImageBuffer(
-      db,
+      req.db,
       req.file.buffer,
       req.file.originalname,
       req.file.mimetype
@@ -120,7 +120,7 @@ router.post("/", upload.single("image"), asyncHandler(async (req, res) => {
     updated_at: now,
   }
 
-  const result = await db.collection("shapes").insertOne(newShape)
+  const result = await req.db.collection("shapes").insertOne(newShape)
 
   newShape._id = result.insertedId
 
@@ -129,7 +129,6 @@ router.post("/", upload.single("image"), asyncHandler(async (req, res) => {
 
 router.patch("/:id", upload.single("image"), asyncHandler(async (req, res) => {
   const { shape_name, category, description, user_email, user_name, outputs, is_active } = req.body
-  const db = getDb()
 
   const objectId = parseObjectId(res, req.params.id)
   if (!objectId) return
@@ -155,14 +154,14 @@ router.patch("/:id", upload.single("image"), asyncHandler(async (req, res) => {
 
   if (req.file) {
     update.image_file_id = await uploadImageBuffer(
-      db,
+      req.db,
       req.file.buffer,
       req.file.originalname,
       req.file.mimetype
     )
   }
 
-  const updated = await db
+  const updated = await req.db
     .collection("shapes")
     .findOneAndUpdate({ _id: objectId }, { $set: update }, { returnDocument: "after" })
 
@@ -182,11 +181,10 @@ router.post("/:id/reactivate", asyncHandler(async (req, res) => {
 }))
 
 async function setActiveState(req, res, isActive) {
-  const db = getDb()
   const objectId = parseObjectId(res, req.params.id)
   if (!objectId) return
 
-  const updated = await db.collection("shapes").findOneAndUpdate(
+  const updated = await req.db.collection("shapes").findOneAndUpdate(
     { _id: objectId },
     { $set: { is_active: isActive, updated_by: req.user.email, updated_at: new Date() } },
     { returnDocument: "after" }

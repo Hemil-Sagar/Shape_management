@@ -22,25 +22,25 @@ class BlocksService {
   constructor(options = {}, app) {
     this.options = options
     this.app = app
+    this.db = getDb()
   }
 
   // GET /api/blocks?projectId=&searchText=
   async find(params) {
-    const db = getDb()
     const { projectId, searchText } = params.query || {}
 
     if (!projectId) {
       throw new BadRequest('projectId is required.')
     }
 
-    await assertProjectAccess(db, projectId, params.user)
+    await assertProjectAccess(this.db, projectId, params.user)
 
     const filter = { project_id: projectId }
     if (searchText) {
       filter.block_name = new RegExp(searchText, 'i')
     }
 
-    const blocks = await db
+    const blocks = await this.db
       .collection('blocks')
       .find(filter)
       .sort({ created_at: -1 })
@@ -51,7 +51,6 @@ class BlocksService {
 
   // GET /api/blocks/:id
   async get(id, params) {
-    const db = getDb()
 
     let objectId
     try {
@@ -60,11 +59,11 @@ class BlocksService {
       throw new NotFound('Block not found')
     }
 
-    const block = await db.collection('blocks').findOne({ _id: objectId })
+    const block = await this.db.collection('blocks').findOne({ _id: objectId })
     if (!block) throw new NotFound('Block not found')
 
     // Reuses the exact same project-ownership check as find/create.
-    await assertProjectAccess(db, block.project_id, params.user)
+    await assertProjectAccess(this.db, block.project_id, params.user)
 
     return toBlockResponse(block)
   }
@@ -77,8 +76,7 @@ class BlocksService {
       throw new BadRequest('project_id and block_name are required.')
     }
 
-    const db = getDb()
-    await assertProjectAccess(db, project_id, params.user)
+    await assertProjectAccess(this.db, project_id, params.user)
 
     const now = new Date()
     const newBlock = {
@@ -93,7 +91,7 @@ class BlocksService {
       status: 'Active',
     }
 
-    const result = await db.collection('blocks').insertOne(newBlock)
+    const result = await this.db.collection('blocks').insertOne(newBlock)
     newBlock._id = result.insertedId
 
     return toBlockResponse(newBlock)

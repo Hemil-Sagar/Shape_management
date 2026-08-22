@@ -32,17 +32,17 @@ class BeamsService{
   constructor(options = {}, app) {
     this.outputs = options
     this.app = app
+    this.db = getDb()
   }
 
   async find(params) {
-    const db = getDb()
     const { projectId, autocadImportId, searchText, statusFilter } = params.query || {}
 
     if (!projectId || !autocadImportId) {
       throw new BadRequest('projectId and autocadImportId are required')
     }
 
-    await assertProjectAccess(db, projectId, params.user)
+    await assertProjectAccess(this.db, projectId, params.user)
 
     const filter = { project_id: projectId, autocad_import_id: autocadImportId }
     if (searchText) {
@@ -52,7 +52,7 @@ class BeamsService{
       filter.status = statusFilter
     }
 
-    const beams = await db
+    const beams = await this.db
       .collection('beams')
       .find(filter)
       .sort({created_at: -1})
@@ -60,7 +60,6 @@ class BeamsService{
     return beams.map(toBeamResponse)
   }
   async get(id, params) {
-    const db = getDb()
 
     let objectId
     try {
@@ -69,11 +68,11 @@ class BeamsService{
       throw new NotFound('Beam not found')
     }
 
-    const beam = await db.collection('beams').findOne({ _id: objectId })
+    const beam = await this.db.collection('beams').findOne({ _id: objectId })
     if (!beam) {
       throw new NotFound('beam not found')
     }
-    await assertProjectAccess(db, beam.project_id, params.user)
+    await assertProjectAccess(this.db, beam.project_id, params.user)
 
     return toBeamResponse(beam)
   }
@@ -98,8 +97,7 @@ class BeamsService{
       throw new BadRequest('beam_name id requireed')
     }
 
-    const db = getDb()
-    await assertProjectAccess(db, project_id, params.user)
+    await assertProjectAccess(this.db, project_id, params.user)
 
     const now = new Date()
     const newBeam = {
@@ -123,7 +121,7 @@ class BeamsService{
       created_at: now,
       updated_at: now,
     }
-    const result = await db.collection('beams').insertOne(newBeam)
+    const result = await this.db.collection('beams').insertOne(newBeam)
     newBeam._id = result.insertedId
 
     return toBeamResponse(newBeam)
