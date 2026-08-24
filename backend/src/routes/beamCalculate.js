@@ -57,7 +57,9 @@ router.post('/:id/calculate', asyncHandler(async (req, res) => {
     CY: Number(CY) || 0,
     CO: Number(CO) || 0,
     BR, D, GC, GS, LD,
-    SD: Number(SD) || 8, LS: Number(LS) || 2, SS: Number(SS) || 150,
+    SD: Number(SD) || 8,
+    LS: Number(LS) || 2,
+    SS: Number(SS) || 150,
   }
 
   const outputs = calculateShapeOutputs(selectedShape, variables)
