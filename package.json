@@ -1,0 +1,8 @@
+{
+  "name": "shape-management",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "client"
+  ]
+}
