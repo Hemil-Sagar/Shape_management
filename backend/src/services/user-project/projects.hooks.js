@@ -1,15 +1,14 @@
 const authenticate = require('../../hooks/authenticate')
-const { all } = require('../../routes/auth')
 const { before, after } = require('../dashboard-user/dashboard-user.hooks')
 
 module.exports = {
   before: {
-    all:[authenticate()],
+    all: [authenticate()],
   },
   after: {
-    all:[],
+    all: [],
   },
   error: {
-    all:[],
+    all: [],
   },
 }
